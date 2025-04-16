@@ -175,82 +175,89 @@ AprilTagNode::~AprilTagNode()
 }
 
 void AprilTagNode::onCamera(const sensor_msgs::msg::Image::ConstSharedPtr& msg_img,
-                            const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg_ci)
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg_ci)
 {
-    // camera intrinsics for rectified images
-    const std::array<double, 4> intrinsics = {msg_ci->p[0], msg_ci->p[5], msg_ci->p[2], msg_ci->p[6]};
+// Camera intrinsics for rectified images
+const std::array<double, 4> intrinsics = {msg_ci->p[0], msg_ci->p[5], msg_ci->p[2], msg_ci->p[6]};
+const bool calibrated = msg_ci->width && msg_ci->height &&
+    intrinsics[0] && intrinsics[1] && intrinsics[2] && intrinsics[3];
 
-    // check for valid intrinsics
-    const bool calibrated = msg_ci->width && msg_ci->height &&
-                            intrinsics[0] && intrinsics[1] && intrinsics[2] && intrinsics[3];
+if(estimate_pose != nullptr && !calibrated) {
+RCLCPP_WARN_STREAM(get_logger(), "The camera is not calibrated! Set 'pose_estimation_method' to \"\" (empty) to disable pose estimation and this warning.");
+}
 
-    if(estimate_pose != nullptr && !calibrated) {
-        RCLCPP_WARN_STREAM(get_logger(), "The camera is not calibrated! Set 'pose_estimation_method' to \"\" (empty) to disable pose estimation and this warning.");
-    }
+// Convert to 8bit monochrome image
+const cv::Mat img_uint8 = cv_bridge::toCvShare(msg_img, "mono8")->image;
+image_u8_t im{img_uint8.cols, img_uint8.rows, img_uint8.cols, img_uint8.data};
 
-    // convert to 8bit monochrome image
-    const cv::Mat img_uint8 = cv_bridge::toCvShare(msg_img, "mono8")->image;
+// Detect tags
+mutex.lock();
+zarray_t* detections = apriltag_detector_detect(td, &im);
+mutex.unlock();
 
-    image_u8_t im{img_uint8.cols, img_uint8.rows, img_uint8.cols, img_uint8.data};
+if(profile)
+timeprofile_display(td->tp);
 
-    // detect tags
-    mutex.lock();
-    zarray_t* detections = apriltag_detector_detect(td, &im);
-    mutex.unlock();
+apriltag_msgs::msg::AprilTagDetectionArray msg_detections;
+msg_detections.header = msg_img->header;
 
-    if(profile)
-        timeprofile_display(td->tp);
+std::vector<geometry_msgs::msg::TransformStamped> tfs;
+std::unordered_map<int, apriltag_detection_t*> best_detections;
 
-    apriltag_msgs::msg::AprilTagDetectionArray msg_detections;
-    msg_detections.header = msg_img->header;
+// First pass: Select best detection per ID
+for(int i = 0; i < zarray_size(detections); i++) {
+apriltag_detection_t* det;
+zarray_get(detections, i, &det);
 
-    std::vector<geometry_msgs::msg::TransformStamped> tfs;
+// Skip invalid detections
+if(!tag_frames.empty() && !tag_frames.count(det->id)) continue;
+if(det->hamming > max_hamming) continue;
 
-    for(int i = 0; i < zarray_size(detections); i++) {
-        apriltag_detection_t* det;
-        zarray_get(detections, i, &det);
+// Track best detection per ID
+auto& current_best = best_detections[det->id];
+if(!current_best || det->decision_margin > current_best->decision_margin) {
+current_best = det;
+}
+}
 
-        RCLCPP_DEBUG(get_logger(),
-                     "detection %3d: id (%2dx%2d)-%-4d, hamming %d, margin %8.3f\n",
-                     i, det->family->nbits, det->family->h, det->id,
-                     det->hamming, det->decision_margin);
+// Second pass: Process best detections
+for(auto& [id, det] : best_detections) {
+// Create detection message
+apriltag_msgs::msg::AprilTagDetection msg_detection;
+msg_detection.family = std::string(det->family->name);
+msg_detection.id = det->id;
+msg_detection.hamming = det->hamming;
+msg_detection.decision_margin = det->decision_margin;
+msg_detection.centre.x = det->c[0];
+msg_detection.centre.y = det->c[1];
+std::memcpy(msg_detection.corners.data(), det->p, sizeof(double) * 8);
+std::memcpy(msg_detection.homography.data(), det->H->data, sizeof(double) * 9);
+msg_detections.detections.push_back(msg_detection);
 
-        // ignore untracked tags
-        if(!tag_frames.empty() && !tag_frames.count(det->id)) { continue; }
+// Create transform if enabled
+if(estimate_pose != nullptr && calibrated) {
+geometry_msgs::msg::TransformStamped tf;
+tf.header = msg_img->header;
+tf.child_frame_id = tag_frames.count(id) ? 
+tag_frames.at(id) : 
+std::string(det->family->name) + ":" + std::to_string(id);
 
-        // reject detections with more corrected bits than allowed
-        if(det->hamming > max_hamming) { continue; }
+const double size = tag_sizes.count(id) ? 
+tag_sizes.at(id) : 
+tag_edge_size;
 
-        // detection
-        apriltag_msgs::msg::AprilTagDetection msg_detection;
-        msg_detection.family = std::string(det->family->name);
-        msg_detection.id = det->id;
-        msg_detection.hamming = det->hamming;
-        msg_detection.decision_margin = det->decision_margin;
-        msg_detection.centre.x = det->c[0];
-        msg_detection.centre.y = det->c[1];
-        std::memcpy(msg_detection.corners.data(), det->p, sizeof(double) * 8);
-        std::memcpy(msg_detection.homography.data(), det->H->data, sizeof(double) * 9);
-        msg_detections.detections.push_back(msg_detection);
+tf.transform = estimate_pose(det, intrinsics, size);
+tfs.push_back(tf);
+}
+}
 
-        // 3D orientation and position
-        if(estimate_pose != nullptr && calibrated) {
-            geometry_msgs::msg::TransformStamped tf;
-            tf.header = msg_img->header;
-            // set child frame name by generic tag name or configured tag name
-            tf.child_frame_id = tag_frames.count(det->id) ? tag_frames.at(det->id) : std::string(det->family->name) + ":" + std::to_string(det->id);
-            const double size = tag_sizes.count(det->id) ? tag_sizes.at(det->id) : tag_edge_size;
-            tf.transform = estimate_pose(det, intrinsics, size);
-            tfs.push_back(tf);
-        }
-    }
+// Publish results
+pub_detections->publish(msg_detections);
 
-    pub_detections->publish(msg_detections);
+if(estimate_pose != nullptr)
+tf_broadcaster.sendTransform(tfs);
 
-    if(estimate_pose != nullptr)
-        tf_broadcaster.sendTransform(tfs);
-
-    apriltag_detections_destroy(detections);
+apriltag_detections_destroy(detections);
 }
 
 rcl_interfaces::msg::SetParametersResult
