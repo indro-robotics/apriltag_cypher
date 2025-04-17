@@ -72,6 +72,7 @@ private:
     std::mutex mutex;
     double tag_edge_size;
     std::atomic<int> max_hamming;
+    std::atomic<double> margin;
     std::atomic<bool> profile;
     std::unordered_map<int, std::string> tag_frames;
     std::unordered_map<int, double> tag_sizes;
@@ -110,6 +111,8 @@ AprilTagNode::AprilTagNode(const rclcpp::NodeOptions& options)
     // read-only parameters
     const std::string tag_family = declare_parameter("family", "36h11", descr("tag family", true));
     tag_edge_size = declare_parameter("size", 1.0, descr("default tag size", true));
+
+    margin = declare_parameter("margin", 20.0, descr("minimum decision margin for detections"));
 
     // get tag names, IDs and sizes
     const auto ids = declare_parameter("tag.ids", std::vector<int64_t>{}, descr("tag ids", true));
@@ -206,18 +209,18 @@ std::unordered_map<int, apriltag_detection_t*> best_detections;
 
 // First pass: Select best detection per ID
 for(int i = 0; i < zarray_size(detections); i++) {
-apriltag_detection_t* det;
-zarray_get(detections, i, &det);
+    apriltag_detection_t* det;
+    zarray_get(detections, i, &det);
 
-// Skip invalid detections
-if(!tag_frames.empty() && !tag_frames.count(det->id)) continue;
-if(det->hamming > max_hamming) continue;
-
-// Track best detection per ID
-auto& current_best = best_detections[det->id];
-if(!current_best || det->decision_margin > current_best->decision_margin) {
-current_best = det;
-}
+    // Skip invalid detections
+    if(!tag_frames.empty() && !tag_frames.count(det->id)) continue;
+    if(det->hamming > max_hamming) continue;
+    if(det->decision_margin < margin) continue;
+    // Track best detection per ID
+    auto& current_best = best_detections[det->id];
+    if(!current_best || det->decision_margin > current_best->decision_margin) {
+    current_best = det;
+    }
 }
 
 // Second pass: Process best detections
@@ -277,6 +280,7 @@ AprilTagNode::onParameter(const std::vector<rclcpp::Parameter>& parameters)
         IF("detector.sharpening", td->decode_sharpening)
         IF("detector.debug", td->debug)
         IF("max_hamming", max_hamming)
+        IF("margin", margin)
         IF("profile", profile)
     }
 
