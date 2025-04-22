@@ -109,7 +109,7 @@ AprilTagNode::AprilTagNode(const rclcpp::NodeOptions& options)
     tf_broadcaster(this, rclcpp::QoS(1))
 {
     // read-only parameters
-    const std::string tag_family = declare_parameter("family", "36h11", descr("tag family", true));
+    const std::string tag_family = declare_parameter("family", "25h9", descr("tag family", true));
     tag_edge_size = declare_parameter("size", 1.0, descr("default tag size", true));
 
     margin = declare_parameter("margin", 20.0, descr("minimum decision margin for detections"));
@@ -142,7 +142,6 @@ AprilTagNode::AprilTagNode(const rclcpp::NodeOptions& options)
     declare_parameter("detector.refine", td->refine_edges, descr("snap to strong gradients"));
     declare_parameter("detector.sharpening", td->decode_sharpening, descr("sharpening of decoded images"));
     declare_parameter("detector.debug", td->debug, descr("write additional debugging images to working directory"));
-
     declare_parameter("max_hamming", 0, descr("reject detections with more corrected bits than allowed"));
     declare_parameter("profile", false, descr("print profiling information to stdout"));
 
