@@ -19,6 +19,6 @@
 
         # optional list of tags
         tag:
-            ids: [9]            # tag ID
+            ids: [5]            # tag ID
             frames: [amr]  # optional frame name
             sizes: [0.660]   # optional tag-specific edge size
