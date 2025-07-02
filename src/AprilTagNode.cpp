@@ -1,4 +1,5 @@
 // ros
+#include <rclcpp/rclcpp.hpp>
 #include "pose_estimation.hpp"
 #include <apriltag_msgs/msg/april_tag_detection.hpp>
 #include <apriltag_msgs/msg/april_tag_detection_array.hpp>
@@ -59,7 +60,6 @@ descr(const std::string& description, const bool& read_only = false)
 class AprilTagNode : public rclcpp::Node {
 public:
     AprilTagNode(const rclcpp::NodeOptions& options);
-
     ~AprilTagNode() override;
 
 private:
@@ -104,7 +104,7 @@ AprilTagNode::AprilTagNode(const rclcpp::NodeOptions& options)
         this->get_node_topics_interface()->resolve_topic_name("image_rect"),
         std::bind(&AprilTagNode::onCamera, this, std::placeholders::_1, std::placeholders::_2),
         declare_parameter("image_transport", "raw", descr({}, true)),
-        rmw_qos_profile_sensor_data)),
+        rclcpp::SensorDataQoS().reliable().keep_last(10).get_rmw_qos_profile())),
     pub_detections(create_publisher<apriltag_msgs::msg::AprilTagDetectionArray>("detections", rclcpp::QoS(1))),
     tf_broadcaster(this, rclcpp::QoS(1))
 {
