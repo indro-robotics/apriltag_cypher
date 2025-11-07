@@ -48,7 +48,6 @@ if(cv_bridge_VERSION VERSION_GREATER_EQUAL 3.3.0)
     add_compile_definitions(cv_bridge_HPP)
 endif()
 
-
 # database of tag functions
 add_library(tags STATIC
     src/tag_functions.cpp
@@ -59,7 +58,6 @@ target_link_libraries(tags
 set_property(TARGET tags PROPERTY
     POSITION_INDEPENDENT_CODE ON
 )
-
 
 # conversion functions as template specialisation
 add_library(conversion STATIC
@@ -77,7 +75,6 @@ ament_target_dependencies(conversion
 set_property(TARGET conversion PROPERTY
     POSITION_INDEPENDENT_CODE ON
 )
-
 
 # pose estimation methods
 add_library(pose_estimation STATIC
@@ -97,7 +94,6 @@ set_property(TARGET pose_estimation PROPERTY
     POSITION_INDEPENDENT_CODE ON
 )
 
-
 # composable node
 add_library(AprilTagNode SHARED
     src/AprilTagNode.cpp
@@ -116,8 +112,9 @@ target_link_libraries(AprilTagNode
     tags
     pose_estimation
 )
+# Corrected plugin name and executable registration:
 rclcpp_components_register_node(AprilTagNode
-    PLUGIN "AprilTagNode"
+    PLUGIN "apriltag_ros::AprilTagNode"
     EXECUTABLE "apriltag_node"
 )
 
@@ -139,12 +136,7 @@ install(DIRECTORY cfg
 if(BUILD_TESTING)
   set(ament_cmake_clang_format_CONFIG_FILE "${CMAKE_SOURCE_DIR}/.clang-format")
   find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
