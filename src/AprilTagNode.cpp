@@ -238,11 +238,11 @@ void AprilTagNode::onCamera(const sensor_msgs::msg::Image::ConstSharedPtr& msg_i
         }
     }
 
-    pub_detections->publish(msg_detections);
-
-    if(estimate_pose != nullptr)
+    if (!msg_detections.detections.empty() and (estimate_pose != nullptr)) {
         tf_broadcaster.sendTransform(tfs);
-
+        pub_detections->publish(msg_detections);
+    }
+    
     apriltag_detections_destroy(detections);
 }
 
@@ -272,8 +272,7 @@ AprilTagNode::onParameter(const std::vector<rclcpp::Parameter>& parameters)
     return result;
 }
 
-// End namespace
-} // namespace apriltag_ros
+}
 
 // Plugin registration (MUST be outside the namespace block!)
 RCLCPP_COMPONENTS_REGISTER_NODE(apriltag_ros::AprilTagNode)
