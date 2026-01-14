@@ -173,6 +173,12 @@ AprilTagNode::~AprilTagNode()
 void AprilTagNode::onCamera(const sensor_msgs::msg::Image::ConstSharedPtr& msg_img,
                             const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg_ci)
 {
+    RCLCPP_INFO(get_logger(),
+                "onCamera: image received stamp=%.3f size=%ux%u encoding=%s",
+                rclcpp::Time(msg_img->header.stamp).seconds(),
+                msg_img->width, msg_img->height,
+                msg_img->encoding.c_str());
+
     const std::array<double, 4> intrinsics = {msg_ci->p[0], msg_ci->p[5], msg_ci->p[2], msg_ci->p[6]};
     const bool calibrated = msg_ci->width && msg_ci->height &&
         intrinsics[0] && intrinsics[1] && intrinsics[2] && intrinsics[3];
@@ -225,6 +231,12 @@ void AprilTagNode::onCamera(const sensor_msgs::msg::Image::ConstSharedPtr& msg_i
         std::memcpy(msg_detection.corners.data(), det->p, sizeof(double) * 8);
         std::memcpy(msg_detection.homography.data(), det->H->data, sizeof(double) * 9);
         msg_detections.detections.push_back(msg_detection);
+        
+        RCLCPP_INFO(get_logger(),
+            "Detection: id=%d family=%s hamm=%d margin=%.2f center=(%.1f, %.1f)",
+            det->id, det->family->name,
+            det->hamming, det->decision_margin,
+            det->c[0], det->c[1]);
 
         if(estimate_pose != nullptr && calibrated) {
             geometry_msgs::msg::TransformStamped tf;
@@ -239,6 +251,9 @@ void AprilTagNode::onCamera(const sensor_msgs::msg::Image::ConstSharedPtr& msg_i
     }
 
     if (!msg_detections.detections.empty() and (estimate_pose != nullptr)) {
+        RCLCPP_INFO(get_logger(),
+            "Publishing %zu detections",
+            msg_detections.detections.size());
         tf_broadcaster.sendTransform(tfs);
         pub_detections->publish(msg_detections);
     }
