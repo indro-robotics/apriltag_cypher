@@ -3,8 +3,8 @@
         image_transport: raw    # image format
         family: 16h5            # tag family name
         size: 0.0572            # tag edge size in meter
-        max_hamming: 2          # maximum allowed hamming distance (corrected bits)
-        margin: 25.0           # decision margin threshold
+        max_hamming: 1          # maximum allowed hamming distance (corrected bits)
+        margin: 30.0           # decision margin threshold
 
         # see "apriltag.h" 'struct apriltag_detector' for more documentation on these optional parameters
         detector:
